@@ -31,6 +31,15 @@ __repo__ = "https://github.com/adafruit/Adafruit_CircuitPython_Dang.git"
 import select
 import sys
 
+import terminalio
+
+try:
+    from typing import Callable
+
+    from terminalio import Terminal
+except ImportError:
+    pass
+
 try:
     import termios
 
@@ -57,7 +66,6 @@ except ImportError:
     def _blocking():
         pass
 
-
 # LINES = 24
 # COLS = 80
 
@@ -83,49 +91,86 @@ special_keys = {
 
 
 class Screen:
+    """
+    Curses based Screen class. Can output to CIRCUITPYTHON_TERMINAL or a
+    terminalio.Terminal instance created by code. Supports reading input
+    from ``sys.stdin``
+
+    :param terminalio.Terminal terminal: a Terminal instance to output the
+      application to. Default is None which will cause output to CIRCUITPYTHON_TERMINAL.
+    """
+
     def __init__(self, terminal=None):
         self._poll = select.poll()
         self._poll.register(sys.stdin, select.POLLIN)
         self._pending = ""
         self._terminal = terminal
 
-    def _sys_stdin_readable(self):
+    def _sys_stdin_readable(self) -> bool:
         return hasattr(sys.stdin, "readable") and sys.stdin.readable()
 
-    def _sys_stdout_flush(self):
+    def _sys_stdout_flush(self) -> None:
         if hasattr(sys.stdout, "flush"):
             sys.stdout.flush()
 
-    def _terminal_read_blocking(self):
+    def _terminal_read_blocking(self) -> str:
         return sys.stdin.read(1)
 
-    def _terminal_read_timeout(self, timeout):
+    def _terminal_read_timeout(self, timeout: int) -> str:
+        """
+        read from stdin with a timeout
+        :param timeout: The timeout to use in ms
+        :return: The value that was read or None if timeout occurred
+        """
         if self._sys_stdin_readable() or self._poll.poll(timeout):
             r = sys.stdin.read(1)
             return r
         return None
 
-    def move(self, y, x):
+    def move(self, y: int, x: int) -> None:
+        """
+        Move the cursor to the specified position.
+        :param y: y position to move the cursor to
+        :param x: x position to move the cursor to
+        :return: None
+        """
         if self._terminal is not None:
-            self._terminal.write(f"\033[{y+1};{x+1}H")
+            self._terminal.write(f"\033[{y + 1};{x + 1}H")
         else:
-            print(end=f"\033[{y+1};{x+1}H")
+            print(end=f"\033[{y + 1};{x + 1}H")
 
-    def erase(self):
+    def erase(self) -> None:
+        """
+        Erase the screen.
+        :return: None
+        """
         if self._terminal is not None:
             self._terminal.write("\033H\033[2J")
 
         else:
             print(end="\033H\033[2J")
 
-    def addstr(self, y, x, text):
+    def addstr(self, y: int, x: int, text: str) -> None:
+        """
+        Add text to the screen at the given location.
+        :param y: y location to add the text at
+        :param x: x location to add the text at
+        :param text: The text to add
+        :return: None
+        """
         self.move(y, x)
         if self._terminal is not None:
             self._terminal.write(text)
         else:
             print(end=text)
 
-    def getkey(self):
+    def getkey(self) -> str:
+        """
+        Get a key input from the keyboard connected to sys.stdin.
+
+        :return: The key that was pressed as a literal string, or one of
+          the values in ``special_keys``.
+        """
         self._sys_stdout_flush()
         pending = self._pending
         if pending and (code := special_keys.get(pending)) is None:
@@ -155,7 +200,15 @@ class Screen:
             pending = c
 
 
-def wrapper(func, *args, **kwds):
+def wrapper(func: Callable, *args, **kwds):
+    """
+    Curses wrapper function for CIRCUITPYTHON_TERMINAL output
+
+    :param func: The application function to wrap
+    :param args: The arguments to pass the application function
+    :param kwds: The keyword arguments to pass the application function
+    :return: None
+    """
     stdscr = Screen()
     try:
         _nonblocking()
@@ -166,7 +219,15 @@ def wrapper(func, *args, **kwds):
         print("\n")
 
 
-def custom_terminal_wrapper(terminal, func, *args, **kwds):
+def custom_terminal_wrapper(terminal: terminalio.Terminal, func: Callable, *args, **kwds):
+    """
+    Curses wrapper function for terminalio.Terminal instance output
+    :param terminal: The Terminal instance to output to.
+    :param func: The application function to wrap
+    :param args: The arguments to pass the application function
+    :param kwds: The keyword arguments to pass the application function
+    :return: None
+    """
     stdscr = Screen(terminal)
     try:
         _nonblocking()
